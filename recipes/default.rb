@@ -27,28 +27,37 @@ node['mdadm']['raids'].each do |name, raid|
     level raid['level']
     chunk raid['chunk']
     action [ :create, :assemble ]
+    not_if "test -f /var/lock/.mdadm_config_done"
   end
+end
+
+execute "create-mdadm-config" do
+  command "(mdadm --detail --scan > /etc/mdadm/mdadm.conf) && touch /var/lock/.mdadm_config_done"
+  creates "/var/lock/.mdadm_config_done"
+  action :run
 end
 
 # In mdadm.conf, 'name' keyword should be removed.
-ruby_block 'create mdadm config file' do
+ruby_block 'modify-mdadm-config' do
   block do
-    cmd = "mdadm --detail --scan > /etc/temp_mdadm_conf"
-    if system(cmd)
-      text = File.open('/etc/temp_mdadm_conf').read
-      text.gsub!(/name.*\ /,'')
-      File.open('/etc/mdadm/mdadm.conf','w') {|file| file.write(text)}
-      system('rm /etc/temp_mdadm_conf')
-    else
-      raise "failed to create mdadm config file."
-    end
+    conf_file = Chef::Util::FileEdit.new "/etc/mdadm/mdadm.conf"
+    conf_file.search_file_delete(/name.*\ /)
   end
+  action :nothing
+  subscribes :create, "execute[create-mdadm-config]", :immediately
 end
 
 # Update initramfs so that mdadm.conf is included in it..
-execute 'update-initramfs -u' do
+execute "update-initramfs" do
+  command "update-initramfs -u && touch /var/lock/.mdadm_update_done"
+  creates "/var/lock/.mdadm_update_done"
+  action :nothing
+  subscribes :run, "ruby_block[modify-mdadm-config]", :immediately
 end
 
 # Make sure to arrange for the arrays to be marked clean before shutdown.
-execute 'mdadm --wait-clean --scan' do
+execute "mdadm-wait-clean" do
+  command "mdadm --wait-clean --scan"
+  action :nothing
+  subscribes :run, "execute[update-initramfs]", :immediately
 end
