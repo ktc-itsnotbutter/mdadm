@@ -27,7 +27,6 @@ node['mdadm']['raids'].each do |name, raid|
     level raid['level']
     chunk raid['chunk']
     action [ :create, :assemble ]
-    not_if "test -f /var/lock/.mdadm_config_done"
   end
 end
 
@@ -49,8 +48,8 @@ end
 
 # Update initramfs so that mdadm.conf is included in it..
 execute "update-initramfs" do
-  command "update-initramfs -u && touch /var/lock/.mdadm_update_done"
-  creates "/var/lock/.mdadm_update_done"
+  command "update-initramfs -u && touch /var/lock/.mdadm_initramfs_done"
+  creates "/var/lock/.mdadm_initramfs_done"
   action :nothing
   subscribes :run, "ruby_block[modify-mdadm-config]", :immediately
 end
